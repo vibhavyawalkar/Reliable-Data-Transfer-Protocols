@@ -25,7 +25,7 @@ using namespace std;
 int base = 0;
 int nextseqnum = 0;
 int N;
-float t = 10.00;
+float t = 20.00;
 vector<struct msg> buffer; /* Message buffer */
 struct pkt pktBuffer[1001]; /* Packet buffer */
 	
@@ -37,74 +37,27 @@ struct pkt myackpkt;
 void A_output(struct msg message)
 {
 	cout << "A_output() called" << endl;
-	//buffer.push_back(message);
+	buffer.push_back(message);
 	if(nextseqnum < base + N) {
 		struct pkt mypkt;
 		memset(&mypkt, 0, sizeof(mypkt));
 		mypkt.seqnum = nextseqnum;
-		mypkt.acknum = -1;
-		if(buffer.size() != 0) {
-			//buffer.push_back(message);
-			while(buffer.size() != 0 && nextseqnum < base + N) {
-				for(int i = 0; i < 20; i++) {
-					mypkt.payload[i] = buffer[0].data[i];
-					pktBuffer[nextseqnum].payload[i] = buffer[0].data[i];
-				}
-				buffer.erase(buffer.begin());
-
-				int checksum = mypkt.acknum + mypkt.seqnum;
-                		int payloadChecksum = 0;
-                		for(int i = 0; i < 20; i++)
-                        		payloadChecksum += mypkt.payload[i];
-                		checksum += payloadChecksum;
-
-                		mypkt.checksum = checksum;
-                		cout << "Sending pkt seqno: " << mypkt.seqnum << "msg: ";
-                		for(int k = 0; k < 20; k++)
-                        		cout << mypkt.payload[k];
-                		cout <<  " checksum" << mypkt.checksum << endl;
-                		pktBuffer[nextseqnum].seqnum = mypkt.seqnum;
-                		pktBuffer[nextseqnum].checksum = mypkt.checksum;
-                		pktBuffer[nextseqnum].acknum = mypkt.acknum;
-                		cout << "PktBuffer contents : seqno: " << pktBuffer[nextseqnum].seqnum << "msg: " << pktBuffer[nextseqnum].payload << "checksum" << pktBuffer[nextseqnum].checksum << endl;
-                		tolayer3(0, mypkt);
-                		if(base == nextseqnum)
-                        		starttimer(0, t);
-                		nextseqnum++;
-			}
-			//return;
-		}
-		if(nextseqnum >= base + N)
-			goto buff;
-		 //else {
-			for(int i = 0; i < 20; i++) {
-                                mypkt.payload[i] = message.data[i];
-                                pktBuffer[nextseqnum].payload[i] = message.data[i];
-                        }
-
-		//}
+		mypkt.acknum = 0;
 		int checksum = mypkt.acknum + mypkt.seqnum;
-		int payloadChecksum = 0;
-		for(int i = 0; i < 20; i++)
-			payloadChecksum += mypkt.payload[i];
-		checksum += payloadChecksum;
+		for(int i = 0; i < 20; i++) {
+                        mypkt.payload[i] = buffer[nextseqnum].data[i];
+			checksum += mypkt.payload[i];
+                }
 
 		mypkt.checksum = checksum;
 		cout << "Sending pkt seqno: " << mypkt.seqnum << "msg: "; 
 		for(int k = 0; k < 20; k++)
 			cout << mypkt.payload[k];
 		cout <<  " checksum" << mypkt.checksum << endl;
-		pktBuffer[nextseqnum].seqnum = mypkt.seqnum;
-		pktBuffer[nextseqnum].checksum = mypkt.checksum;
-		pktBuffer[nextseqnum].acknum = mypkt.acknum;
-		cout << "PktBuffer contents : seqno: " << pktBuffer[nextseqnum].seqnum << "msg: " << pktBuffer[nextseqnum].payload << "checksum" << pktBuffer[nextseqnum].checksum << endl;
 		tolayer3(0, mypkt);
 		if(base == nextseqnum)
 			starttimer(0, t);
 		nextseqnum++;	
-	} else {
-		/*Buffer the message */
-buff:		buffer.push_back(message);
 	}
 }
 
@@ -131,20 +84,23 @@ void A_timerinterrupt()
 {
 	cout << "A_timerinterrupt() called" << endl;
 	starttimer(0, t);
+	struct pkt p;
 	for(int i = base; i < nextseqnum; i++) {
-		/*struct pkt p;
 		memset(&p, 0, sizeof(p));
-		p.seqnum = pktBuffer[i].seqnum;
-		p.acknum = pktBuffer[i].acknum;
-		p.checksum = pktBuffer[i].checksum;
+		p.seqnum = i;
+		p.acknum = 0;
+		int checksum = p.seqnum + p.acknum;
+		for(int j = 0; j < 20; j++) {
+			p.payload[j] = buffer[i].data[j];
+			checksum += buffer[i].data[j];
+		}
+
+		p.checksum = checksum;
+		cout << "Sending pkt seqno: " << p.seqnum << " msg: ";
 		for(int j = 0; j < 20; j++)
-			p.payload[j] = pktBuffer[i].payload[j];
-		cout << "Sending pkt seqno: " << p.seqnum << " msg: " << p.payload << "checksum: " << p.checksum << " " << pktBuffer[i].checksum << endl;*/
-		cout << "Sending pkt seqno: " << pktBuffer[i].seqnum << " msg: ";
-		for(int j = 0; j < 20; j++)
-			cout << pktBuffer[i].payload[j];
-		cout << " checksum: " << pktBuffer[i].checksum << endl;
-		tolayer3(0, pktBuffer[i]);
+			cout << p.payload[i];
+		cout << "checksum: " << p.checksum << endl;
+		tolayer3(0, p);
 	}
 }  
 
