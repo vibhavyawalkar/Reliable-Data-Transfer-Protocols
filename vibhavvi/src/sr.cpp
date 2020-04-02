@@ -1,3 +1,9 @@
+#include<iostream>
+#include<stdio.h>
+#include<stdlib.h>
+#include<string.h>
+#include<vector>
+using namespace std;
 #include "../include/simulator.h"
 
 /* ******************************************************************
@@ -13,31 +19,126 @@
      (although some can be lost).
 **********************************************************************/
 
+/* Sender Data */
+int send_base = 0;
+int nextseqnum = 0;
+int N_sender;
+float t = 12.00;
+struct senderMsg {
+	char message[20];
+	float start_time;
+	int acked;
+};
+struct senderMsg senderBuffer[1001] = {{0}};
+vector<struct msg> buffer;
+
+/* Receiver Data */
+int rcv_base = 0;
+int N_receiver;
+
+struct receiverMsg {
+	char message[20];
+	int acked;
+};
+
+struct receiverMsg receiverBuffer[1010] = {{0}};
+
 /********* STUDENTS WRITE THE NEXT SEVEN ROUTINES *********/
 
 /* called from layer 5, passed the data to be sent to other side */
 void A_output(struct msg message)
 {
-
+	cout << "A_output called" << endl;
+	buffer.push_back(message);
+	if(nextseqnum < send_base + N_sender) {
+		struct pkt mypkt;
+		memset(&mypkt, 0, sizeof(mypkt));
+		mypkt.seqnum = nextseqnum;
+		mypkt.acknum = 0;
+		int checksum = mypkt.acknum + mypkt.seqnum;	
+		for(int i = 0; i < 20; i++) {
+			mypkt.payload[i] = buffer[nextseqnum].data[i];
+			senderBuffer[nextseqnum].message[i] = mypkt.payload[i];
+			checksum += mypkt.payload[i];
+		}
+		mypkt.checksum = checksum;
+		cout << "Sending pkt seqno: " << mypkt.seqnum << "msg : ";
+		for(int i = 0; i < 20; i++)
+			cout << mypkt.payload[i];
+		cout << " checksum:" << mypkt.checksum;
+		senderBuffer[nextseqnum].acked = 0;
+		senderBuffer[nextseqnum].start_time = get_sim_time(); /* time when the packet was sent */ 
+		cout << " send time: " << get_sim_time() << endl;
+		tolayer3(0, mypkt);
+		if(send_base == nextseqnum)
+			starttimer(0, 2.00);
+		nextseqnum++;
+	}
 }
 
 /* called from layer 3, when a packet arrives for layer 4 */
 void A_input(struct pkt packet)
 {
-
+	cout << "A_input called" << endl;
+	int checksum = packet.acknum + packet.seqnum;
+	if(checksum == packet.checksum) {
+		cout << "ACK not corrupt" << endl;
+		if(packet.acknum < send_base + N_sender) {
+		/* Mark the packet as received/acked, if it lies in the window */
+			senderBuffer[packet.acknum].acked = 1;
+		}
+		if(packet.acknum == send_base) {
+		/* The window base if moved forward to the unacknowledged packet with the smallest sequence number*/
+			for(int i = send_base; i < N_sender; i++)
+				if(senderBuffer[i].acked == 1)
+					send_base++; 
+		}
+	}
 }
 
 /* called when A's timer goes off */
 void A_timerinterrupt()
 {
+	cout << "A_timerinterrupt called" << endl;
 
+	for(int i = send_base; i < N_sender; i++)
+	{
+		float diff = get_sim_time() - senderBuffer[i].start_time;
+		if(senderBuffer[i].acked == 0 && abs((int)diff) >= (int)t)
+		{
+			/* Resend the packets who's ack is lost or not received by the receiver */
+			struct pkt mypkt;
+                	memset(&mypkt, 0, sizeof(mypkt));
+                	mypkt.seqnum = i;
+                	mypkt.acknum = 0;
+                	int checksum = mypkt.acknum + mypkt.seqnum;
+                	for(int j = 0; j < 20; j++) {
+                        	mypkt.payload[j] = senderBuffer[i].message[j];
+                        	checksum += mypkt.payload[j];
+                	}
+                	mypkt.checksum = checksum;
+                	cout << "Sending pkt seqno: " << mypkt.seqnum << "msg : ";
+                	for(int j = 0; j < 20; j++)
+                        	cout << mypkt.payload[j];
+                	cout << " checksum:" << mypkt.checksum << endl;
+                	senderBuffer[i].acked = 0;
+                	senderBuffer[i].start_time = get_sim_time(); /* time when the packet was sent */
+                	tolayer3(0, mypkt); 
+		}
+	}
+	//stoptimer(0);
+	starttimer(0, 2.00);
 }  
 
 /* the following routine will be called once (only) before any other */
 /* entity A routines are called. You can use it to do any initialization */
 void A_init()
 {
-
+	cout << "A_init called" << endl;
+	send_base = 0;
+	nextseqnum = 0;
+	N_sender = getwinsize();
+//	starttimer(0, t);
 }
 
 /* Note that with simplex transfer from a-to-B, there is no B_output() */
@@ -45,12 +146,55 @@ void A_init()
 /* called from layer 3, when a packet arrives for layer 4 at B*/
 void B_input(struct pkt packet)
 {
+	cout << "B_input called" << endl;
+	int checksum = packet.acknum + packet.seqnum;
+	for(int i = 0; i < 20; i++)
+		checksum += packet.payload[i];
 
+	if(packet.checksum == checksum) {
+        	for(int j = 0; j < 20; j++)
+                	receiverBuffer[packet.seqnum].message[j] = packet.payload[j];
+
+		if(packet.seqnum >= rcv_base && packet.seqnum < rcv_base + N_receiver) {
+			struct pkt myackpkt;
+			memset(&myackpkt, 0, sizeof(myackpkt));
+			myackpkt.seqnum = packet.seqnum;
+			myackpkt.acknum = packet.seqnum;
+			int ackChecksum = myackpkt.acknum + myackpkt.seqnum;
+			myackpkt.checksum = ackChecksum;
+			tolayer3(1, myackpkt);
+			receiverBuffer[packet.seqnum].acked = 1;
+			if(packet.seqnum == rcv_base)
+			{
+				for(int k = rcv_base; k < N_receiver; k++)
+				{
+					if(receiverBuffer[k].acked == 1)
+					{
+						tolayer5(1, receiverBuffer[k].message);	
+						rcv_base++;
+					} else {
+						break;
+					}
+				}
+			}
+		} else if(packet.seqnum <= rcv_base-1 && packet.seqnum >= rcv_base-N_receiver) {
+			struct pkt myackpkt;
+			memset(&myackpkt, 0, sizeof(myackpkt));
+			myackpkt.seqnum = packet.seqnum;
+			myackpkt.acknum = packet.seqnum;
+			int ackChecksum = myackpkt.acknum + myackpkt.seqnum;
+			myackpkt.checksum = ackChecksum;
+			tolayer3(1, myackpkt);
+		}
+	}
 }
 
 /* the following rouytine will be called once (only) before any other */
 /* entity B routines are called. You can use it to do any initialization */
 void B_init()
 {
-
+	cout << "B_init called" << endl;
+	rcv_base = 0;
+	N_receiver = getwinsize();
+	memset(receiverBuffer, 0, sizeof(receiverBuffer));
 }
