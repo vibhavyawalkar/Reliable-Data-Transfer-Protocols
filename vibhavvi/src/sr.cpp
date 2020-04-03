@@ -23,7 +23,7 @@ using namespace std;
 int send_base = 0;
 int nextseqnum = 0;
 int N_sender;
-float t = 20.00;
+float t = 40.00;
 struct senderMsg {
 	char message[20];
 	float start_time;
@@ -50,17 +50,18 @@ void A_output(struct msg message)
 {
 	cout << "A_output called, send_base: "<< send_base << " nextseqnum :" << nextseqnum << " N_sender: " << N_sender << endl;
 	buffer.push_back(message);
-	if(nextseqnum < send_base + N_sender) {
+	while(nextseqnum < send_base + N_sender && buffer.size()!= 0) {
 		struct pkt mypkt;
 		memset(&mypkt, 0, sizeof(mypkt));
 		mypkt.seqnum = nextseqnum;
 		mypkt.acknum = 0; // Setting 2 when the ACK is not received and 1 when the ack is received
 		int checksum = mypkt.acknum + mypkt.seqnum;	
 		for(int i = 0; i < 20; i++) {
-			mypkt.payload[i] = buffer[nextseqnum].data[i];
-			senderBuffer[nextseqnum].message[i] = buffer[nextseqnum].data[i];
+			mypkt.payload[i] = buffer[0].data[i];
+			senderBuffer[nextseqnum].message[i] = buffer[0].data[i];
 			checksum += mypkt.payload[i];
 		}
+		buffer.erase(buffer.begin());
 		mypkt.checksum = checksum;
 		cout << "Sending pkt seqno: " << mypkt.seqnum << "msg : ";
 		for(int i = 0; i < 20; i++)
@@ -70,8 +71,8 @@ void A_output(struct msg message)
 		senderBuffer[nextseqnum].start_time = get_sim_time(); /* time when the packet was sent */ 
 		cout << " send time: " << get_sim_time() << endl;
 		tolayer3(0, mypkt);
-		//if(send_base == nextseqnum)
-		//	starttimer(0, 1.00);
+		/*if(send_base == nextseqnum)
+			starttimer(0, 1.00); */
 		nextseqnum++;
 	}
 }
@@ -83,20 +84,49 @@ void A_input(struct pkt packet)
 	int checksum = packet.acknum + packet.seqnum;
 	if(checksum == packet.checksum) {
 		cout << "ACK not corrupt, received for seqnum:" << packet.acknum << endl;
-		if(packet.acknum < send_base + nextseqnum/*N_sender*/) {
+		//if(packet.acknum < send_base + nextseqnum/*N_sender*/) {
 		/* Mark the packet as received/acked, if it lies in the window */
 			senderBuffer[packet.acknum].acked = 1;
-		}
+		//}
 		if(packet.acknum == send_base) {
 
 		/* The window base if moved forward to the unacknowledged packet with the smallest sequence number*/
-			for(int i = send_base; i < nextseqnum/*send_base + N_sender*/; i++)
-			{
-				if(senderBuffer[i].acked == 1) {
+			//for(int i = send_base; i < nextseqnum/*send_base + N_sender*/; i++)
+			//{
+				while(senderBuffer[send_base].acked == 1) {
 					send_base++;
 					cout << "Incremented send_base : " << send_base << endl;
 				}
-			}
+			//}
+
+		/* Send all the buffered packets when the window is moved */
+			while(nextseqnum < send_base + N_sender && buffer.size() != 0) {
+				cout << "Sending all the buffered packets when the window is moved" << endl;
+                		struct pkt mypkt;
+                		memset(&mypkt, 0, sizeof(mypkt));
+                		mypkt.seqnum = nextseqnum;
+                		mypkt.acknum = 0; // Setting 2 when the ACK is not received and 1 when the ack is received
+                		int checksum = mypkt.acknum + mypkt.seqnum;
+                		for(int j = 0; j < 20; j++) {
+					mypkt.payload[j] = buffer[0].data[j];
+                        		senderBuffer[nextseqnum].message[j] = buffer[0].data[j];
+                        		checksum += mypkt.payload[j];
+                		}
+				buffer.erase(buffer.begin());
+                		mypkt.checksum = checksum;
+                		cout << "Sending pkt seqno: " << mypkt.seqnum << "msg : ";
+                		for(int j = 0; j < 20; j++)
+                        		cout << mypkt.payload[j];
+                		cout << " checksum:" << mypkt.checksum;
+                		senderBuffer[nextseqnum].acked = 2;
+                		senderBuffer[nextseqnum].start_time = get_sim_time(); /* time when the packet was sent */
+                		cout << " send time: " << get_sim_time() << endl;
+                		tolayer3(0, mypkt);
+                		/*if(send_base == nextseqnum)
+                         	starttimer(0, 1.00); */
+                		nextseqnum++;
+        		}
+
 		}
 		
 	}
