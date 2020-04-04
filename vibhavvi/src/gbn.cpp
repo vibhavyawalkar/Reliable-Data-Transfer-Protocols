@@ -94,12 +94,11 @@ void A_timerinterrupt()
 			p.payload[j] = buffer[i].data[j];
 			checksum += buffer[i].data[j];
 		}
-
 		p.checksum = checksum;
 		cout << "Sending pkt seqno: " << p.seqnum << " msg: ";
 		for(int j = 0; j < 20; j++)
-			cout << p.payload[i];
-		cout << "checksum: " << p.checksum << endl;
+			cout << p.payload[j];
+		cout << " checksum: " << p.checksum << endl;
 		tolayer3(0, p);
 	}
 }  
@@ -161,4 +160,5 @@ void B_init()
 	cout << "B_init() called" << endl;
 	expectedseqnum = 0;
 	memset(&myackpkt, 0, sizeof(myackpkt));
+	myackpkt.acknum = -1; /* I discovered the need of this when I send the acknowledgement in case the first packet itself is corrupt */
 }
